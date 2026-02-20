@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+        .results-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .result-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .result-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .knowledge-graph-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .attribute-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            margin: 0.25rem;
+            font-size: 0.875rem;
+        }
+        .sitelink-item {
+            display: inline-block;
+            margin: 0.5rem 0.5rem 0.5rem 0;
+        }
+        .sitelink-item a {
+            color: #667eea;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 1px solid #667eea;
+            border-radius: 20px;
+            transition: all 0.2s;
+        }
+        .sitelink-item a:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="results-container">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="mb-0">
+                    <i class="bi bi-search me-2"></i>Search Results
+                </h1>
+                <a href="index.html" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left me-2"></i>New Search
+                </a>
+            </div>
+
+            <div id="searchQueryDisplay" class="alert alert-info mb-4">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>Search Query:</strong> <span id="queryText"></span>
+            </div>
+
+            <div id="resultsContent">
+                <!-- Results will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get results from sessionStorage
+        const resultsData = JSON.parse(sessionStorage.getItem('searchResults'));
+        const searchQuery = sessionStorage.getItem('searchQuery');
+
+        if (!resultsData) {
+            document.getElementById('resultsContent').innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    No results found. Please go back and perform a new search.
+                </div>
+            `;
+        } else {
+            // Display search query
+            document.getElementById('queryText').textContent = searchQuery || 'N/A';
+
+            const resultsContent = document.getElementById('resultsContent');
+            let html = '';
+
+            // Display Knowledge Graph if available
+            if (resultsData.knowledgeGraph) {
+                const kg = resultsData.knowledgeGraph;
+                html += `
+                    <div class="knowledge-graph-card">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <h2 class="mb-3">${kg.title || 'N/A'}</h2>
+                                <p class="mb-3">${kg.description || ''}</p>
+                                ${kg.website ? `<p><i class="bi bi-globe me-2"></i><a href="${kg.website}" target="_blank" class="text-white">${kg.website}</a></p>` : ''}
+                                ${kg.attributes ? `
+                                    <div class="mt-3">
+                                        ${Object.entries(kg.attributes).map(([key, value]) => 
+                                            `<span class="attribute-badge"><strong>${key}:</strong> ${value}</span>`
+                                        ).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            ${kg.imageUrl ? `
+                                <div class="col-md-4 text-center">
+                                    <img src="${kg.imageUrl}" alt="${kg.title}" class="img-fluid rounded" style="max-height: 200px;">
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Display Organic Results
+            if (resultsData.organic && resultsData.organic.length > 0) {
+                html += '<h3 class="mb-4"><i class="bi bi-list-ul me-2"></i>Search Results</h3>';
+                
+                resultsData.organic.forEach((result, index) => {
+                    html += `
+                        <div class="result-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h4 class="mb-0">
+                                    <a href="${result.link}" target="_blank" class="text-decoration-none text-dark">
+                                        ${result.title || 'No Title'}
+                                    </a>
+                                </h4>
+                                <span class="badge bg-secondary">#${result.position || index + 1}</span>
+                            </div>
+                            <p class="text-muted mb-2">${result.snippet || 'No description available'}</p>
+                            <a href="${result.link}" target="_blank" class="text-primary text-decoration-none small">
+                                <i class="bi bi-box-arrow-up-right me-1"></i>${result.link}
+                            </a>
+                            ${result.attributes ? `
+                                <div class="mt-3">
+                                    ${Object.entries(result.attributes).map(([key, value]) => 
+                                        `<span class="badge bg-light text-dark me-2"><strong>${key}:</strong> ${value}</span>`
+                                    ).join('')}
+                                </div>
+                            ` : ''}
+                            ${result.sitelinks && result.sitelinks.length > 0 ? `
+                                <div class="mt-3 pt-3 border-top">
+                                    <strong class="d-block mb-2">Related Links:</strong>
+                                    ${result.sitelinks.map(sitelink => 
+                                        `<span class="sitelink-item"><a href="${sitelink.link}" target="_blank">${sitelink.title}</a></span>`
+                                    ).join('')}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+            } else {
+                html += `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No organic results found for this search.
+                    </div>
+                `;
+            }
+
+            // Display People Also Ask if available
+            if (resultsData.peopleAlsoAsk && resultsData.peopleAlsoAsk.length > 0) {
+                html += '<h3 class="mb-4 mt-5"><i class="bi bi-question-circle me-2"></i>People Also Ask</h3>';
+                resultsData.peopleAlsoAsk.forEach((item) => {
+                    html += `
+                        <div class="result-card">
+                            <h5 class="mb-2">${item.question}</h5>
+                            <p class="text-muted mb-2">${item.snippet}</p>
+                            <a href="${item.link}" target="_blank" class="text-primary text-decoration-none small">
+                                <i class="bi bi-box-arrow-up-right me-1"></i>${item.link}
+                            </a>
+                        </div>
+                    `;
+                });
+            }
+
+            // Display Related Searches if available
+            if (resultsData.relatedSearches && resultsData.relatedSearches.length > 0) {
+                html += '<h3 class="mb-4 mt-5"><i class="bi bi-tags me-2"></i>Related Searches</h3>';
+                html += '<div class="d-flex flex-wrap gap-2">';
+                resultsData.relatedSearches.forEach((search) => {
+                    html += `
+                        <span class="badge bg-light text-dark p-2" style="font-size: 0.9rem;">
+                            ${search.query}
+                        </span>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            if (html === '') {
+                html = `
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        No results found for your search query.
+                    </div>
+                `;
+            }
+
+            resultsContent.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
+
