@@ -1,13 +1,207 @@
+/* Minimal, whitish modern UI – design tokens */
+:root {
+  --bg-page: #f8f9fa;
+  --bg-card: #ffffff;
+  --border: #e9ecef;
+  --text: #212529;
+  --text-muted: #6c757d;
+  --accent: #495057;
+  --accent-soft: #adb5bd;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --focus-ring: 0 0 0 2px rgba(0, 0, 0, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: ui-monospace, monospace;
+}
+
+/* App shell */
+.app-with-nav {
+  padding-top: 60px;
+  min-height: 100vh;
+}
+
+@media (min-width: 768px) {
+  .app-with-nav {
+    padding-top: 68px;
+  }
+}
+
+/* Navbar – minimal */
+.nav-app {
+  background: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.nav-app .navbar-brand {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.nav-app .nav-link {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-sm);
+}
+
+.nav-app .nav-link:hover {
+  color: var(--text);
+  background: var(--bg-page);
+}
+
+.nav-app .nav-link.active {
+  color: var(--text);
+  font-weight: 500;
+  background: var(--bg-page);
+}
+
+/* Page layout */
+.app-page {
+  text-align: center;
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.app-page--top {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+}
+
+.page-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+}
+
+.page-desc {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+}
+
+/* Cards – minimal */
+.card-app {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card-app:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: #dee2e6;
+}
+
+.card-app .card-body {
+  padding: 1.25rem 1.5rem;
+}
+
+/* Stat cards on home */
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* Search block */
+.search-block .form-control {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1rem;
+  font-size: 0.9375rem;
+  background: var(--bg-card);
+}
+
+.search-block .form-control::placeholder {
+  color: var(--accent-soft);
+}
+
+.search-block .form-control:focus {
+  border-color: var(--accent-soft);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.search-block .btn-primary {
+  background: var(--text);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.search-block .btn-primary:hover {
+  background: var(--accent);
+  filter: none;
+}
+
+.search-block .btn-primary:disabled {
+  background: var(--accent-soft);
+  opacity: 0.9;
+}
+
+/* Alerts – minimal */
+.alert-app {
+  border-radius: var(--radius-sm);
+  border: 1px solid #f8d7da;
+  background: #fff5f5;
+  color: #721c24;
+  font-size: 0.9375rem;
+}
+
+.result-meta {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border) !important;
+}
+
+/* Section headings */
+.section-head {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
 }

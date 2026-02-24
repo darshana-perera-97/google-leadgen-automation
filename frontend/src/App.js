@@ -1,23 +1,26 @@
-import logo from './logo.svg';
-import './App.css';
+import { Routes, Route } from 'react-router-dom';
+import TopNav from './components/TopNav';
+import HomePage from './pages/HomePage';
+import LeadsPage from './pages/LeadsPage';
+import CampaignsPage from './pages/CampaignsPage';
+import MessagesPage from './pages/MessagesPage';
+import HistoryPage from './pages/HistoryPage';
+import SettingsPage from './pages/SettingsPage';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div className="app-with-nav">
+      <TopNav />
+      <main className="App">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/leads" element={<LeadsPage />} />
+          <Route path="/campaigns" element={<CampaignsPage />} />
+          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
+      </main>
     </div>
   );
 }
