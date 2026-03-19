@@ -268,14 +268,11 @@ const { readQueue, addToQueue, removeFirstFromQueue, getQueueLength } = require(
 
 let queueProcessing = false;
 let sentInBatch = 0;
+let sentTotal = 0;
 
 const ONE_MINUTE_MS = 60 * 1000;
-const BREAK_MIN_MS = 10 * 60 * 1000;
-const BREAK_MAX_MS = 15 * 60 * 1000;
-
-function randomBetween(minMs, maxMs) {
-  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-}
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 function processQueue() {
   if (queueProcessing) return;
@@ -303,14 +300,18 @@ function processQueue() {
     sendCampaignToContact(lead, campaign, getImagePath)
       .then(() => {
         sentInBatch++;
+        sentTotal++;
         console.log('[Queue] Sent to', lead.name || lead.whatsappnumber, '(', getQueueLength(), 'left )');
         const delayAfterSend = ONE_MINUTE_MS;
-        const breakAfterTen = sentInBatch >= 10;
-        if (breakAfterTen) {
+        if (sentTotal >= 100) {
+          sentTotal = 0;
           sentInBatch = 0;
-          const breakMs = randomBetween(BREAK_MIN_MS, BREAK_MAX_MS);
-          console.log('[Queue] Break for', Math.round(breakMs / 60000), 'min before next batch');
-          setTimeout(() => setTimeout(doNext, delayAfterSend), breakMs);
+          console.log('[Queue] Break for 30 min (every 100 messages)');
+          setTimeout(() => setTimeout(doNext, delayAfterSend), THIRTY_MINUTES_MS);
+        } else if (sentInBatch >= 10) {
+          sentInBatch = 0;
+          console.log('[Queue] Break for 10 min (every 10 messages)');
+          setTimeout(() => setTimeout(doNext, delayAfterSend), TEN_MINUTES_MS);
         } else {
           setTimeout(doNext, delayAfterSend);
         }
@@ -377,7 +378,7 @@ app.post('/api/messages/queue', (req, res) => {
     }));
     addToQueue(items);
     processQueue();
-    res.status(201).json({ queued: items.length, message: 'Messages queued. Sending with 1 min delay per contact and 10–15 min break every 10 contacts.' });
+    res.status(201).json({ queued: items.length, message: 'Messages queued. Sending with 1 min per contact, 10 min break every 10 messages, 30 min break every 100 messages.' });
   } catch (err) {
     console.error('Queue add error:', err);
     res.status(500).json({ error: err.message });
