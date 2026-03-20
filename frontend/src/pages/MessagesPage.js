@@ -10,14 +10,17 @@ export default function MessagesPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [selectedPhrases, setSelectedPhrases] = useState([]);
 
-  // Unique search phrases from leads with count: [{ phrase, count }]
+  // Unique search phrases (or categories) from leads with count: [{ phrase, count }]
   const searchResultsWithCounts = useMemo(() => {
     if (!Array.isArray(leads) || leads.length === 0) return [];
     const byPhrase = {};
     leads.forEach((lead) => {
-      const phrase = typeof lead.searchPhrase === 'string'
+      let phrase = typeof lead.searchPhrase === 'string'
         ? lead.searchPhrase.trim()
         : (lead.searchPhrase && typeof lead.searchPhrase.name === 'string' ? lead.searchPhrase.name.trim() : '');
+      if (!phrase && lead.category) {
+        phrase = typeof lead.category === 'string' ? lead.category.trim() : (lead.category.name && String(lead.category.name).trim()) || '';
+      }
       if (!phrase) return;
       byPhrase[phrase] = (byPhrase[phrase] || 0) + 1;
     });
@@ -144,7 +147,7 @@ export default function MessagesPage() {
           <div className="col-12 col-lg-6">
             <label className="form-label small text-muted mb-2 d-block">Search phrases (select one or more)</label>
             {searchResultsWithCounts.length === 0 ? (
-              <p className="small text-muted mb-0">No saved search results. Save leads from the Home search first.</p>
+              <p className="small text-muted mb-0">No leads with search phrase or category. Save leads from the Home search first.</p>
             ) : (
               <div className="table-responsive border rounded" style={{ maxHeight: 320, overflowY: 'auto' }}>
                 <table className="table table-hover align-middle mb-0">

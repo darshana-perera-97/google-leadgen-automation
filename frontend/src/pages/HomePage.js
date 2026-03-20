@@ -9,6 +9,43 @@ const CARD_KEYS = [
   { title: 'Messages', key: 'messages' },
 ];
 
+// ISO 2-letter country codes for Serper API gl parameter
+const COUNTRIES = [
+  { code: '', name: 'Any country' },
+  { code: 'us', name: 'United States' },
+  { code: 'uk', name: 'United Kingdom' },
+  { code: 'in', name: 'India' },
+  { code: 'ca', name: 'Canada' },
+  { code: 'au', name: 'Australia' },
+  { code: 'de', name: 'Germany' },
+  { code: 'fr', name: 'France' },
+  { code: 'es', name: 'Spain' },
+  { code: 'it', name: 'Italy' },
+  { code: 'nl', name: 'Netherlands' },
+  { code: 'br', name: 'Brazil' },
+  { code: 'mx', name: 'Mexico' },
+  { code: 'za', name: 'South Africa' },
+  { code: 'ng', name: 'Nigeria' },
+  { code: 'ke', name: 'Kenya' },
+  { code: 'ae', name: 'United Arab Emirates' },
+  { code: 'sg', name: 'Singapore' },
+  { code: 'my', name: 'Malaysia' },
+  { code: 'ph', name: 'Philippines' },
+  { code: 'pk', name: 'Pakistan' },
+  { code: 'bd', name: 'Bangladesh' },
+  { code: 'zw', name: 'Zimbabwe' },
+  { code: 'lk', name: 'Sri Lanka' },
+  { code: 'gh', name: 'Ghana' },
+  { code: 'eg', name: 'Egypt' },
+  { code: 'sa', name: 'Saudi Arabia' },
+  { code: 'tr', name: 'Turkey' },
+  { code: 'pl', name: 'Poland' },
+  { code: 'jp', name: 'Japan' },
+  { code: 'kr', name: 'South Korea' },
+  { code: 'cn', name: 'China' },
+  { code: 'ru', name: 'Russia' },
+];
+
 function getContactDisplay(item) {
   const phone = item.phone || item.phoneNumber || item.tel || item.telephone;
   if (phone) return { label: 'Contact', value: phone };
@@ -31,6 +68,7 @@ export default function HomePage() {
   const [result, setResult] = useState(null);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('lk');
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveMessage, setSaveMessage] = useState(null);
   const [cards, setCards] = useState({ leads: 0, searches: 0, campaigns: 0, messages: 0 });
@@ -81,6 +119,9 @@ export default function HomePage() {
     setSaveMessage(null);
     setSaveLoading(true);
     try {
+      const countryName = selectedCountry ? COUNTRIES.find((c) => c.code === selectedCountry)?.name : null;
+      const searchPhraseWithCountry = countryName ? `${query} (${countryName})` : query;
+
       const rows = result.organic.map((item) => {
         const contact = getContactDisplay(item);
         return {
@@ -92,7 +133,11 @@ export default function HomePage() {
       const res = await fetch(`${API_BASE}/api/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows, category: selectedCategory || '', searchPhrase: query })
+        body: JSON.stringify({
+          rows,
+          category: selectedCategory || '',
+          searchPhrase: searchPhraseWithCountry
+        })
       });
       const data = await parseJsonResponse(res);
       if (res.ok) {
@@ -124,7 +169,7 @@ export default function HomePage() {
       const res = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q })
+        body: JSON.stringify({ q, gl: selectedCountry || undefined })
       });
       const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || data.message || 'Search failed');
@@ -198,29 +243,47 @@ export default function HomePage() {
           <div className="card card-app">
             <div className="card-body p-4">
               <p className="section-head mb-3">Search</p>
-              {categories.length > 0 && (
-                <div className="mb-3">
-                  <label htmlFor="home-category" className="form-label small text-muted mb-1">
-                    Category (optional)
+              <div className="row g-3 mb-3">
+                {categories.length > 0 && (
+                  <div className="col-12 col-md-6">
+                    <label htmlFor="home-category" className="form-label small text-muted mb-1">
+                      Category (optional)
+                    </label>
+                    <select
+                      id="home-category"
+                      className="form-select form-select-sm"
+                      value={selectedCategory}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedCategory(val);
+                        if (val) setQuery(val);
+                      }}
+                      aria-label="Select a saved category"
+                    >
+                      <option value="">Select a saved category</option>
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="col-12 col-md-6">
+                  <label htmlFor="home-country" className="form-label small text-muted mb-1">
+                    Country (optional)
                   </label>
                   <select
-                    id="home-category"
+                    id="home-country"
                     className="form-select form-select-sm"
-                    value={selectedCategory}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedCategory(val);
-                      if (val) setQuery(val);
-                    }}
-                    aria-label="Select a saved category"
+                    value={selectedCountry}
+                    onChange={(e) => setSelectedCountry(e.target.value)}
+                    aria-label="Select country for search"
                   >
-                    <option value="">Select a saved category</option>
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat}>{cat}</option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code || 'any'} value={c.code}>{c.name}</option>
                     ))}
                   </select>
                 </div>
-              )}
+              </div>
               <form onSubmit={handleSearch} className="search-block d-flex flex-column flex-md-row gap-2">
                 <input
                   type="text"

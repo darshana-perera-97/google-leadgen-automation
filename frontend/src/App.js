@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import LeadsPage from './pages/LeadsPage';
 import CampaignsPage from './pages/CampaignsPage';
 import MessagesPage from './pages/MessagesPage';
+import RunningCampaignsPage from './pages/RunningCampaignsPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 
@@ -17,6 +18,7 @@ function App() {
           <Route path="/leads" element={<LeadsPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/running-campaigns" element={<RunningCampaignsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

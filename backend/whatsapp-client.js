@@ -78,6 +78,20 @@ function isConnected() {
   return connected === true && client != null;
 }
 
+async function logout() {
+  if (client) {
+    try {
+      await client.logout();
+    } catch (err) {
+      console.error('WhatsApp logout error:', err.message);
+    }
+    client = null;
+  }
+  qrDataUrl = null;
+  connected = false;
+  initClient();
+}
+
 async function sendCampaignToContact(lead, campaign, imagePathResolver) {
   if (!client || !connected) throw new Error('WhatsApp not connected');
   const number = String(lead.whatsappnumber || '').replace(/\D/g, '');
@@ -104,4 +118,4 @@ async function sendCampaignToContact(lead, campaign, imagePathResolver) {
   }
 }
 
-module.exports = { initClient, getSession, getClient, isConnected, sendCampaignToContact };
+module.exports = { initClient, getSession, getClient, isConnected, sendCampaignToContact, logout };

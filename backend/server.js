@@ -34,7 +34,7 @@ app.get('/health', (req, res) => {
 const { readCategories, writeCategories } = require('./routes/categories');
 
 // Leads (stored in ./data/leads.json)
-const { readLeads, writeLeads } = require('./routes/leads');
+const { readLeads, writeLeads, appendSavedBatch } = require('./routes/leads');
 
 // Campaigns (stored in ./data/campaigns.json)
 const { readCampaigns, writeCampaigns } = require('./routes/campaigns');
@@ -171,6 +171,24 @@ app.post('/api/leads', (req, res) => {
     });
     const updated = existing.concat(toAdd);
     writeLeads(updated);
+
+    const batchForJson = {
+      savedAt: new Date().toISOString(),
+      searchPhrase,
+      category,
+      leads: toAdd.map((l) => ({
+        name: l.name,
+        whatsappnumber: l.whatsappnumber,
+        category: l.category && typeof l.category === 'object' ? l.category.name : l.category,
+        searchPhrase: l.searchPhrase
+      }))
+    };
+    try {
+      appendSavedBatch(batchForJson);
+    } catch (batchErr) {
+      console.error('[Leads] Saved batches append error:', batchErr);
+    }
+
     try {
       updateDashboard({ lastSearchPhrase: searchPhrase, lastCategory: category });
     } catch (dashboardErr) {
@@ -261,10 +279,11 @@ app.post('/api/campaigns', (req, res) => {
 });
 
 // WhatsApp Web session (QR + connection status)
-const { initClient, getSession, getClient, isConnected, sendCampaignToContact } = require('./whatsapp-client');
+const { initClient, getSession, getClient, isConnected, sendCampaignToContact, logout } = require('./whatsapp-client');
 
 // Message queue (./data/queue.json)
 const { readQueue, addToQueue, removeFirstFromQueue, getQueueLength } = require('./routes/queue');
+const { readStats, addQueued, addSent } = require('./routes/campaign-stats');
 
 let queueProcessing = false;
 let sentInBatch = 0;
@@ -301,6 +320,11 @@ function processQueue() {
       .then(() => {
         sentInBatch++;
         sentTotal++;
+        try {
+          addSent(campaign?.name);
+        } catch (e) {
+          console.error('[Queue] Stats update error:', e.message);
+        }
         console.log('[Queue] Sent to', lead.name || lead.whatsappnumber, '(', getQueueLength(), 'left )');
         const delayAfterSend = ONE_MINUTE_MS;
         if (sentTotal >= 100) {
@@ -336,10 +360,21 @@ app.get('/api/whatsapp/session', (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/logout', async (req, res) => {
+  try {
+    await logout();
+    res.json({ success: true, message: 'Logged out. Scan the new QR code to reconnect.' });
+  } catch (err) {
+    console.error('WhatsApp logout error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/queue', (req, res) => {
   try {
     const queue = readQueue();
-    res.json({ length: queue.length, items: queue });
+    const stats = readStats();
+    res.json({ length: queue.length, items: queue, stats });
   } catch (err) {
     console.error('Queue read error:', err);
     res.status(500).json({ error: err.message });
@@ -360,8 +395,10 @@ app.post('/api/messages/queue', (req, res) => {
     const phraseSet = new Set(phrases.map((p) => String(p).trim()).filter(Boolean));
     const allLeads = readLeads();
     const leadsToSend = allLeads.filter((lead) => {
-      const p = typeof lead.searchPhrase === 'string' ? lead.searchPhrase.trim() : (lead.searchPhrase && lead.searchPhrase.name) ? String(lead.searchPhrase.name).trim() : '';
-      return phraseSet.has(p) && lead.whatsappnumber && String(lead.whatsappnumber).replace(/\D/g, '').length >= 10;
+      const searchP = typeof lead.searchPhrase === 'string' ? lead.searchPhrase.trim() : (lead.searchPhrase && lead.searchPhrase.name) ? String(lead.searchPhrase.name).trim() : '';
+      const categoryP = lead.category ? (typeof lead.category === 'string' ? lead.category.trim() : (lead.category.name && String(lead.category.name).trim()) || '') : '';
+      const matches = phraseSet.has(searchP) || (categoryP && phraseSet.has(categoryP));
+      return matches && lead.whatsappnumber && String(lead.whatsappnumber).replace(/\D/g, '').length >= 10;
     });
     if (leadsToSend.length === 0) {
       return res.status(400).json({ error: 'No leads with WhatsApp numbers found for selected phrases' });
@@ -377,6 +414,11 @@ app.post('/api/messages/queue', (req, res) => {
       lead: { name: lead.name, whatsappnumber: lead.whatsappnumber }
     }));
     addToQueue(items);
+    try {
+      addQueued(campaign.name, items.length);
+    } catch (e) {
+      console.error('[Queue] Stats add error:', e.message);
+    }
     processQueue();
     res.status(201).json({ queued: items.length, message: 'Messages queued. Sending with 1 min per contact, 10 min break every 10 messages, 30 min break every 100 messages.' });
   } catch (err) {
@@ -388,13 +430,15 @@ app.post('/api/messages/queue', (req, res) => {
 // Search endpoint
 app.post('/api/search', async (req, res) => {
   try {
-    const { q } = req.body;
+    const { q, gl } = req.body;
 
-    console.log('[Search] Request query:', q);
+    console.log('[Search] Request query:', q, gl ? `country: ${gl}` : '');
 
     if (!q) {
       return res.status(400).json({ error: 'Search query is required' });
     }
+
+    const glParam = gl && typeof gl === 'string' && gl.trim().length === 2 ? gl.trim().toLowerCase() : null;
 
     const apiKey = process.env.SERPER_API_KEY;
     if (!apiKey) {
@@ -413,6 +457,9 @@ app.post('/api/search', async (req, res) => {
     while (hasMore) {
       console.log('[Search] Fetching Serper API page', page, 'for query:', q);
 
+      const requestBody = { q, page };
+      if (glParam) requestBody.gl = glParam;
+
       const config = {
         method: 'post',
         maxBodyLength: Infinity,
@@ -421,7 +468,7 @@ app.post('/api/search', async (req, res) => {
           'X-API-KEY': apiKey,
           'Content-Type': 'application/json'
         },
-        data: JSON.stringify({ q, page })
+        data: JSON.stringify(requestBody)
       };
 
       const response = await axios.request(config);

@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const [newCategory, setNewCategory] = useState('');
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState(null);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +63,24 @@ export default function SettingsPage() {
     fetchCategories();
   }, []);
 
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/whatsapp/logout`, { method: 'POST' });
+      const data = await parseJsonResponse(res);
+      if (res.ok) {
+        setSession({ connected: false, qr: null, account: null });
+        setError(null);
+      } else {
+        setError(data.error || 'Logout failed');
+      }
+    } catch (err) {
+      setError(err.message || 'Logout failed');
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
+
   const handleAddCategory = async (e) => {
     e.preventDefault();
     const name = newCategory.trim();
@@ -96,22 +115,22 @@ export default function SettingsPage() {
       <div className="card card-app text-start">
         <div className="card-body p-4">
           <p className="section-head mb-3">WhatsApp</p>
-          <p className="page-desc small mb-3">
-            Link WhatsApp Web to this app. Open WhatsApp on your phone, go to Linked Devices and scan the QR code below.
-          </p>
 
           {loading && !session.qr && !session.connected && (
             <p className="small text-muted mb-0">Starting WhatsApp Web…</p>
           )}
 
           {error && !session.qr && !session.connected && (
-            <div className="alert alert-app py-2 px-3 mb-0">
+            <div className="alert alert-app py-2 px-3 mb-3">
               {error}
             </div>
           )}
 
-          {session.connected && (
+          {session.connected ? (
             <div>
+              <p className="page-desc small mb-3">
+                Your WhatsApp account is linked. You can send messages from the Messages page.
+              </p>
               <div className="d-flex align-items-center gap-2 text-success mb-3">
                 <span className="small fw-medium">Connected</span>
               </div>
@@ -138,18 +157,33 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm mt-3"
+                onClick={handleLogout}
+                disabled={logoutLoading}
+              >
+                {logoutLoading ? 'Logging out…' : 'Logout'}
+              </button>
             </div>
-          )}
-
-          {session.qr && (
-            <div className="mt-2">
-              <img
-                src={session.qr}
-                alt="WhatsApp QR code"
-                className="rounded"
-                style={{ maxWidth: 280, height: 'auto' }}
-              />
-              <p className="small text-muted mt-2 mb-0">Scan with WhatsApp → Linked Devices</p>
+          ) : (
+            <div>
+              <p className="page-desc small mb-3">
+                Link WhatsApp Web to this app. Open WhatsApp on your phone, go to Linked Devices and scan the QR code below.
+              </p>
+              {session.qr ? (
+                <div>
+                  <img
+                    src={session.qr}
+                    alt="WhatsApp QR code"
+                    className="rounded"
+                    style={{ maxWidth: 280, height: 'auto' }}
+                  />
+                  <p className="small text-muted mt-2 mb-0">Scan with WhatsApp → Linked Devices</p>
+                </div>
+              ) : (
+                !loading && !error && <p className="small text-muted mb-0">Waiting for QR code…</p>
+              )}
             </div>
           )}
         </div>

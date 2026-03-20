@@ -6,6 +6,7 @@ const navItems = [
   { path: '/leads', label: 'Leads' },
   { path: '/campaigns', label: 'Campaigns' },
   { path: '/messages', label: 'Messages' },
+  { path: '/running-campaigns', label: 'Running campaigns' },
   { path: '/history', label: 'History' },
   { path: '/settings', label: 'Settings' },
 ];
