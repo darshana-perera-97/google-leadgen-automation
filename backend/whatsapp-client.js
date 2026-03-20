@@ -1,10 +1,21 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
+const path = require('path');
 
 let client = null;
 let qrDataUrl = null;
 let connected = false;
+let reconnectTimer = null;
+
+function scheduleReconnect(ms, reason) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    console.log('[WhatsApp] Reconnecting...' + (reason ? ` (${reason})` : ''));
+    initClient();
+  }, ms);
+}
 
 function getSession() {
   const session = { connected, qr: qrDataUrl, account: null };
@@ -23,10 +34,18 @@ function getSession() {
 }
 
 function initClient() {
-  if (client) return client;
+  if (client && connected) return client;
+  if (client && !connected) {
+    try {
+      if (client.destroy) client.destroy();
+    } catch {
+      // ignore
+    }
+    client = null;
+  }
 
   client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
+    authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
     authTimeoutMs: 900000,
     puppeteer: {
       headless: true,
@@ -69,12 +88,28 @@ function initClient() {
     console.error('WhatsApp auth failure:', msg);
     qrDataUrl = null;
     connected = false;
+
+    try {
+      if (client?.destroy) client.destroy();
+    } catch {
+      // ignore
+    }
+    client = null;
+    scheduleReconnect(20000, 'auth_failure');
   });
 
   client.on('disconnected', (reason) => {
     connected = false;
     qrDataUrl = null;
     console.log('WhatsApp disconnected:', reason);
+
+    try {
+      if (client?.destroy) client.destroy();
+    } catch {
+      // ignore
+    }
+    client = null;
+    scheduleReconnect(20000, 'disconnected');
   });
 
   const shouldRetry = (msg) => {
@@ -95,7 +130,7 @@ function initClient() {
       } catch (e) {
         // ignore
       }
-      setTimeout(() => initClient(), 20000);
+      scheduleReconnect(20000, 'init_error');
     }
   });
 

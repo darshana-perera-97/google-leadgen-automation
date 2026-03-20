@@ -246,7 +246,7 @@ app.delete('/api/categories/:name', (req, res) => {
 
 app.get('/api/campaigns', (req, res) => {
   try {
-    const campaigns = readCampaigns();
+    const campaigns = readCampaigns().map((c) => ({ ...c, status: c.status || 'active' }));
     res.json(campaigns);
   } catch (err) {
     console.error('Campaigns read error:', err);
@@ -267,6 +267,7 @@ app.post('/api/campaigns', (req, res) => {
       name: nameStr,
       messages: Array.isArray(messages) ? messages.filter((m) => m != null).map((m) => String(m).trim()).filter(Boolean) : [],
       image: typeof image === 'string' ? image.trim() || null : null,
+      status: 'active',
       createdAt: new Date().toISOString()
     };
     campaigns.push(newCampaign);
@@ -278,11 +279,107 @@ app.post('/api/campaigns', (req, res) => {
   }
 });
 
+app.delete('/api/campaigns/:id', (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const campaigns = readCampaigns();
+    const existing = campaigns.find((c) => String(c.id) === String(campaignId));
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+
+    const updated = campaigns.filter((c) => String(c.id) !== String(campaignId));
+    writeCampaigns(updated);
+
+    // Best-effort cleanup of queued items (only those that include campaignId).
+    const queue = readQueue();
+    const cleanedQueue = queue.filter((item) => {
+      if (!item || !item.campaignId) return true;
+      return String(item.campaignId) !== String(campaignId);
+    });
+    writeQueue(cleanedQueue);
+
+    res.json({ success: true, deleted: existing });
+  } catch (err) {
+    console.error('Campaigns delete error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/campaigns/:id/pause', (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const campaigns = readCampaigns();
+    const updated = campaigns.map((c) => {
+      if (String(c.id) !== String(campaignId)) return c;
+      return { ...c, status: 'paused' };
+    });
+    const existing = updated.find((c) => String(c.id) === String(campaignId));
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+    writeCampaigns(updated);
+    res.json(existing);
+  } catch (err) {
+    console.error('Campaign pause error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/campaigns/:id/continue', (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const campaigns = readCampaigns();
+    const updated = campaigns.map((c) => {
+      if (String(c.id) !== String(campaignId)) return c;
+      return { ...c, status: 'active' };
+    });
+    const existing = updated.find((c) => String(c.id) === String(campaignId));
+    if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+    writeCampaigns(updated);
+    res.json(existing);
+  } catch (err) {
+    console.error('Campaign continue error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/campaigns/:id/analytics', (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const campaigns = readCampaigns();
+    const campaign = campaigns.find((c) => String(c.id) === String(campaignId));
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+
+    const queue = readQueue();
+    const pending = queue.filter((i) => {
+      if (!i || !i.campaign) return false;
+      if (i.campaignId) return String(i.campaignId) === String(campaignId);
+      // Fallback for older queued items without campaignId.
+      return i.campaign?.name && String(i.campaign.name) === String(campaign.name);
+    }).length;
+
+    const stats = readStats();
+    const totalQueued = (stats.totalQueued && stats.totalQueued[campaign.name]) || 0;
+    const totalSent = (stats.totalSent && stats.totalSent[campaign.name]) || 0;
+    const percentage = totalQueued > 0
+      ? Math.round((totalSent / totalQueued) * 100)
+      : (totalSent > 0 ? 100 : 0);
+
+    res.json({
+      campaign: { ...campaign, status: campaign.status || 'active' },
+      pending,
+      totalQueued,
+      totalSent,
+      percentage
+    });
+  } catch (err) {
+    console.error('Campaign analytics error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // WhatsApp Web session (QR + connection status)
 const { initClient, getSession, getClient, isConnected, sendCampaignToContact, logout } = require('./whatsapp-client');
 
 // Message queue (./data/queue.json)
-const { readQueue, addToQueue, removeFirstFromQueue, getQueueLength } = require('./routes/queue');
+const { readQueue, writeQueue, addToQueue, removeFirstFromQueue, getQueueLength } = require('./routes/queue');
 const { readStats, addQueued, addSent } = require('./routes/campaign-stats');
 
 let queueProcessing = false;
@@ -315,7 +412,27 @@ function processQueue() {
       return;
     }
 
-    const { lead, campaign } = item;
+    const { lead, campaign, campaignId } = item;
+
+    // Pause/continue should also work for older queued items that might not have campaignId.
+    const campaigns = readCampaigns();
+    const campaignRecord = campaignId != null
+      ? campaigns.find((c) => String(c.id) === String(campaignId))
+      : (campaign?.name ? campaigns.find((c) => String(c.name) === String(campaign.name)) : null);
+
+    if (!campaignRecord) {
+      // Campaign deleted or unknown: drop queued item.
+      setTimeout(doNext, ONE_MINUTE_MS);
+      return;
+    }
+    const status = campaignRecord.status || 'active';
+    if (status === 'paused') {
+      // Re-queue item to keep it pending until "Continue".
+      addToQueue([item]);
+      setTimeout(doNext, ONE_MINUTE_MS);
+      return;
+    }
+
     sendCampaignToContact(lead, campaign, getImagePath)
       .then(() => {
         sentInBatch++;
@@ -410,6 +527,7 @@ app.post('/api/messages/queue', (req, res) => {
     };
     const items = leadsToSend.map((lead) => ({
       jobId: Date.now() + Math.random(),
+      campaignId: campaign.id,
       campaign: campaignPayload,
       lead: { name: lead.name, whatsappnumber: lead.whatsappnumber }
     }));

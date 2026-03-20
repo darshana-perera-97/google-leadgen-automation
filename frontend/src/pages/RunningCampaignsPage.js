@@ -6,6 +6,34 @@ import { API_BASE } from '../config';
 export default function RunningCampaignsPage() {
   const [queue, setQueue] = useState({ length: 0, items: [], stats: { totalQueued: {}, totalSent: {} } });
   const [loading, setLoading] = useState(true);
+  const [campaignMeta, setCampaignMeta] = useState([]);
+  const [campaignActionLoadingId, setCampaignActionLoadingId] = useState(null);
+
+  const refreshQueue = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/queue`);
+      const data = await parseJsonResponse(res);
+      if (data && Array.isArray(data.items)) {
+        setQueue({
+          length: data.length ?? data.items.length,
+          items: data.items,
+          stats: data.stats || { totalQueued: {}, totalSent: {} }
+        });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshCampaignMeta = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/campaigns`);
+      const data = await parseJsonResponse(res);
+      if (Array.isArray(data)) setCampaignMeta(data);
+    } catch {
+      // ignore
+    }
+  };
 
   const allCampaigns = useMemo(() => {
     const items = Array.isArray(queue.items) ? queue.items : [];
@@ -28,8 +56,12 @@ export default function RunningCampaignsPage() {
         const percentage = totalQueued > 0
           ? Math.round((totalSent / totalQueued) * 100)
           : (totalSent > 0 ? 100 : 0);
+        const meta = campaignMeta.find((c) => String(c.name) === String(name));
+        const status = meta?.status || 'active';
+        const campaignId = meta?.id;
+
         const isRunning = pending > 0;
-        return { name, totalQueued, totalSent, pending, percentage, isRunning };
+        return { name, campaignId, status, totalQueued, totalSent, pending, percentage, isRunning };
       })
       .filter((c) => c.totalQueued > 0 || c.totalSent > 0)
       .sort((a, b) => {
@@ -53,10 +85,15 @@ export default function RunningCampaignsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/queue`)
-      .then((res) => parseJsonResponse(res))
-      .then((data) => {
-        if (!cancelled) updateQueue(data);
+    Promise.all([
+      fetch(`${API_BASE}/api/queue`).then((res) => parseJsonResponse(res)),
+      fetch(`${API_BASE}/api/campaigns`).then((res) => parseJsonResponse(res))
+    ])
+      .then(([queueData, campaignsData]) => {
+        if (!cancelled) {
+          updateQueue(queueData);
+          if (Array.isArray(campaignsData)) setCampaignMeta(campaignsData);
+        }
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -65,13 +102,28 @@ export default function RunningCampaignsPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      fetch(`${API_BASE}/api/queue`)
-        .then((res) => parseJsonResponse(res))
-        .then(updateQueue)
-        .catch(() => {});
+      refreshQueue();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handlePauseContinue = async (campaign, e) => {
+    if (e) e.stopPropagation();
+    if (!campaign?.campaignId) return;
+    setCampaignActionLoadingId(campaign.campaignId);
+    try {
+      const endpoint = campaign.status === 'paused' ? 'continue' : 'pause';
+      const res = await fetch(`${API_BASE}/api/campaigns/${campaign.campaignId}/${endpoint}`, { method: 'POST' });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data?.error || data?.message || 'Update failed');
+      await refreshCampaignMeta();
+      await refreshQueue();
+    } catch {
+      // ignore
+    } finally {
+      setCampaignActionLoadingId(null);
+    }
+  };
 
   const CampaignTable = ({ campaigns, statusBadge }) => (
     <table className="table table-hover align-middle mb-0">
@@ -82,17 +134,30 @@ export default function RunningCampaignsPage() {
           <th className="text-muted small text-uppercase text-end">Total</th>
           <th className="text-muted small text-uppercase text-end">Pending</th>
           <th className="text-muted small text-uppercase text-end">%</th>
+          <th className="text-muted small text-uppercase text-end">Actions</th>
           <th className="text-muted small text-uppercase text-end">Status</th>
         </tr>
       </thead>
       <tbody>
-        {campaigns.map(({ name, totalSent, totalQueued, pending, percentage }) => (
-          <tr key={name}>
+        {campaigns.map(({ name, campaignId, status, totalSent, totalQueued, pending, percentage }) => (
+          <tr key={campaignId || name}>
             <td className="fw-medium">{name}</td>
             <td className="text-end">{totalSent}</td>
             <td className="text-end">{totalQueued}</td>
             <td className="text-end">{pending}</td>
             <td className="text-end">{percentage}%</td>
+            <td className="text-end">
+              {campaignId && (
+                <button
+                  type="button"
+                  className={`btn btn-sm ${status === 'paused' ? 'btn-outline-success' : 'btn-outline-warning'}`}
+                  onClick={(e) => handlePauseContinue({ campaignId, status }, e)}
+                  disabled={campaignActionLoadingId === campaignId}
+                >
+                  {campaignActionLoadingId === campaignId ? '…' : status === 'paused' ? 'Continue' : 'Pause'}
+                </button>
+              )}
+            </td>
             <td className="text-end">{statusBadge}</td>
           </tr>
         ))}
