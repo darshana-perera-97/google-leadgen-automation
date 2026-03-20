@@ -7,6 +7,7 @@ export default function RunningCampaignsPage() {
   const [queue, setQueue] = useState({ length: 0, items: [], stats: { totalQueued: {}, totalSent: {} } });
   const [loading, setLoading] = useState(true);
   const [campaignMeta, setCampaignMeta] = useState([]);
+  const [whatsappSession, setWhatsappSession] = useState({ connected: false, qr: null, account: null });
   const [campaignActionLoadingId, setCampaignActionLoadingId] = useState(null);
 
   const refreshQueue = async () => {
@@ -30,6 +31,20 @@ export default function RunningCampaignsPage() {
       const res = await fetch(`${API_BASE}/api/campaigns`);
       const data = await parseJsonResponse(res);
       if (Array.isArray(data)) setCampaignMeta(data);
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshWhatsappSession = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/whatsapp/session`);
+      const data = await parseJsonResponse(res);
+      setWhatsappSession({
+        connected: !!data.connected,
+        qr: data.qr || null,
+        account: data.account || null
+      });
     } catch {
       // ignore
     }
@@ -60,18 +75,50 @@ export default function RunningCampaignsPage() {
         const status = meta?.status || 'active';
         const campaignId = meta?.id;
 
-        const isRunning = pending > 0;
-        return { name, campaignId, status, totalQueued, totalSent, pending, percentage, isRunning };
+        const isPaused = status === 'paused';
+        const isPending = pending > 0;
+        const isConnected = whatsappSession.connected === true;
+        const canSendNow = isConnected && !isPaused && isPending;
+        const isWaiting = !isPaused && !isConnected && isPending;
+
+        const rowBadge = isPaused ? (
+          <span className="badge bg-secondary">Paused</span>
+        ) : isWaiting ? (
+          <span className="badge bg-secondary">Waiting</span>
+        ) : canSendNow ? (
+          <span className="badge bg-warning text-dark">Sending</span>
+        ) : (
+          <span className="badge bg-success">Completed</span>
+        );
+
+        return {
+          name,
+          campaignId,
+          status,
+          totalQueued,
+          totalSent,
+          pending,
+          percentage,
+          canSendNow,
+          isWaiting,
+          isPaused,
+          rowBadge
+        };
       })
       .filter((c) => c.totalQueued > 0 || c.totalSent > 0)
       .sort((a, b) => {
-        if (a.isRunning !== b.isRunning) return a.isRunning ? -1 : 1;
+        // Sending/Waiting/Paused first, then Completed.
+        const rankA = a.canSendNow ? 0 : (a.isWaiting ? 1 : (a.isPaused ? 2 : 3));
+        const rankB = b.canSendNow ? 0 : (b.isWaiting ? 1 : (b.isPaused ? 2 : 3));
+        if (rankA !== rankB) return rankA - rankB;
         return a.name.localeCompare(b.name);
       });
-  }, [queue.items, queue.stats]);
+  }, [queue.items, queue.stats, campaignMeta, whatsappSession.connected]);
 
-  const runningCampaigns = allCampaigns.filter((c) => c.isRunning);
-  const completedCampaigns = allCampaigns.filter((c) => !c.isRunning);
+  const sendingCampaigns = allCampaigns.filter((c) => c.canSendNow);
+  const pausedCampaigns = allCampaigns.filter((c) => c.isPaused && c.pending > 0);
+  const waitingCampaigns = allCampaigns.filter((c) => c.isWaiting && c.pending > 0);
+  const completedCampaigns = allCampaigns.filter((c) => c.pending === 0 && c.totalSent > 0);
 
   const updateQueue = (data) => {
     if (data && Array.isArray(data.items)) {
@@ -103,6 +150,7 @@ export default function RunningCampaignsPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       refreshQueue();
+      refreshWhatsappSession();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -125,7 +173,7 @@ export default function RunningCampaignsPage() {
     }
   };
 
-  const CampaignTable = ({ campaigns, statusBadge }) => (
+  const CampaignTable = ({ campaigns }) => (
     <table className="table table-hover align-middle mb-0">
       <thead className="table-light">
         <tr>
@@ -139,7 +187,7 @@ export default function RunningCampaignsPage() {
         </tr>
       </thead>
       <tbody>
-        {campaigns.map(({ name, campaignId, status, totalSent, totalQueued, pending, percentage }) => (
+        {campaigns.map(({ name, campaignId, status, totalSent, totalQueued, pending, percentage, rowBadge }) => (
           <tr key={campaignId || name}>
             <td className="fw-medium">{name}</td>
             <td className="text-end">{totalSent}</td>
@@ -158,7 +206,7 @@ export default function RunningCampaignsPage() {
                 </button>
               )}
             </td>
-            <td className="text-end">{statusBadge}</td>
+            <td className="text-end">{rowBadge}</td>
           </tr>
         ))}
       </tbody>
@@ -180,15 +228,32 @@ export default function RunningCampaignsPage() {
         </div>
       ) : (
         <>
-          {runningCampaigns.length > 0 && (
+          {sendingCampaigns.length > 0 && (
             <div className="card card-app mb-4">
               <div className="card-body p-4">
                 <p className="section-head mb-3">Sending</p>
                 <div className="table-responsive">
-                  <CampaignTable
-                    campaigns={runningCampaigns}
-                    statusBadge={<span className="badge bg-warning text-dark">Sending</span>}
-                  />
+                  <CampaignTable campaigns={sendingCampaigns} />
+                </div>
+              </div>
+            </div>
+          )}
+          {pausedCampaigns.length > 0 && (
+            <div className="card card-app mb-4">
+              <div className="card-body p-4">
+                <p className="section-head mb-3">Paused</p>
+                <div className="table-responsive">
+                  <CampaignTable campaigns={pausedCampaigns} />
+                </div>
+              </div>
+            </div>
+          )}
+          {waitingCampaigns.length > 0 && (
+            <div className="card card-app mb-4">
+              <div className="card-body p-4">
+                <p className="section-head mb-3">Waiting</p>
+                <div className="table-responsive">
+                  <CampaignTable campaigns={waitingCampaigns} />
                 </div>
               </div>
             </div>
@@ -198,10 +263,7 @@ export default function RunningCampaignsPage() {
               <div className="card-body p-4">
                 <p className="section-head mb-3">Completed</p>
                 <div className="table-responsive">
-                  <CampaignTable
-                    campaigns={completedCampaigns}
-                    statusBadge={<span className="badge bg-success">Completed</span>}
-                  />
+                  <CampaignTable campaigns={completedCampaigns} />
                 </div>
               </div>
             </div>
