@@ -1,5 +1,6 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
+const qrcodeTerminal = require('qrcode-terminal');
 
 let client = null;
 let qrDataUrl = null;
@@ -36,7 +37,8 @@ function initClient() {
         '--disable-gpu',
         '--disable-software-rasterizer',
         '--disable-extensions',
-        '--no-first-run'
+        '--no-first-run',
+        '--disable-features=site-per-process'
       ]
     }
   });
@@ -45,6 +47,9 @@ function initClient() {
     try {
       qrDataUrl = await QRCode.toDataURL(qr, { width: 280, margin: 2 });
       connected = false;
+      console.log('\n[WhatsApp] Scan this QR code with your phone (WhatsApp → Linked Devices):\n');
+      qrcodeTerminal.generate(qr, { small: true });
+      console.log('\n');
     } catch (err) {
       console.error('WhatsApp QR generation error:', err);
     }
@@ -72,10 +77,15 @@ function initClient() {
     console.log('WhatsApp disconnected:', reason);
   });
 
+  const shouldRetry = (msg) => {
+    const m = String(msg || '').toLowerCase();
+    return m.includes('auth timeout') || m.includes('frame was detached') || m.includes('frame got detached');
+  };
+
   client.initialize().catch((err) => {
     console.error('WhatsApp init error:', err.message || err);
-    if (err.message && String(err.message).toLowerCase().includes('auth timeout')) {
-      console.log('[WhatsApp] Auth timeout - retrying in 15s...');
+    if (err.message && shouldRetry(err.message)) {
+      console.log('[WhatsApp] Retrying in 20s...');
       const oldClient = client;
       client = null;
       qrDataUrl = null;
@@ -85,7 +95,7 @@ function initClient() {
       } catch (e) {
         // ignore
       }
-      setTimeout(() => initClient(), 15000);
+      setTimeout(() => initClient(), 20000);
     }
   });
 
