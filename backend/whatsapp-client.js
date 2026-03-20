@@ -26,9 +26,18 @@ function initClient() {
 
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
+    authTimeoutMs: 900000,
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--no-first-run'
+      ]
     }
   });
 
@@ -64,7 +73,20 @@ function initClient() {
   });
 
   client.initialize().catch((err) => {
-    console.error('WhatsApp init error:', err);
+    console.error('WhatsApp init error:', err.message || err);
+    if (err.message && String(err.message).toLowerCase().includes('auth timeout')) {
+      console.log('[WhatsApp] Auth timeout - retrying in 15s...');
+      const oldClient = client;
+      client = null;
+      qrDataUrl = null;
+      connected = false;
+      try {
+        if (oldClient && oldClient.destroy) oldClient.destroy();
+      } catch (e) {
+        // ignore
+      }
+      setTimeout(() => initClient(), 15000);
+    }
   });
 
   return client;
